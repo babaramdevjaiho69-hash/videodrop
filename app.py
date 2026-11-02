@@ -1,8 +1,16 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from urllib.parse import urlparse
 
 app = FastAPI(title="VideoDrop Backend")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class VideoRequest(BaseModel):
     url: str
@@ -20,10 +28,7 @@ def prepare_video(data: VideoRequest):
     url = data.url.strip()
     parsed = urlparse(url)
 
-    if parsed.scheme not in ("http", "https"):
-        raise HTTPException(400, "Invalid URL")
-
-    if not parsed.hostname:
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise HTTPException(400, "Invalid URL")
 
     if parsed.hostname in ("localhost", "127.0.0.1"):
@@ -32,10 +37,7 @@ def prepare_video(data: VideoRequest):
     extension = parsed.path.lower().split(".")[-1]
 
     if extension not in ("mp4", "webm"):
-        raise HTTPException(
-            400,
-            "Only direct MP4 and WebM links are supported"
-        )
+        raise HTTPException(400, "Only direct MP4 and WebM links are supported")
 
     return {
         "status": "checked",
