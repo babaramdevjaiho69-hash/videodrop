@@ -69,3 +69,7 @@ def download_video(data: VideoRequest):
         url=data.url.strip(),
         status_code=302
     )
+@app.get("/download")
+def download_video_get(url: str):
+    validate_media_url(url)
+    return RedirectResponse(url=url, status_code=302)
