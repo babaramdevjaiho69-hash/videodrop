@@ -1,7 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from urllib.parse import urlparse
+import ipaddress
 
 app = FastAPI(title="VideoDrop Backend")
 
@@ -15,6 +17,34 @@ app.add_middleware(
 class VideoRequest(BaseModel):
     url: str
 
+def validate_media_url(url: str):
+    parsed = urlparse(url.strip())
+
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise HTTPException(400, "Invalid URL")
+
+    if parsed.username or parsed.password:
+        raise HTTPException(400, "URLs with credentials are not allowed")
+
+    host = parsed.hostname.lower()
+
+    if host == "localhost" or host.endswith(".localhost"):
+        raise HTTPException(400, "Local URLs are not allowed")
+
+    try:
+        ip = ipaddress.ip_address(host)
+        if not ip.is_global:
+            raise HTTPException(400, "Private IP addresses are not allowed")
+    except ValueError:
+        pass
+
+    extension = parsed.path.lower().rsplit(".", 1)[-1]
+
+    if extension not in ("mp4", "webm"):
+        raise HTTPException(400, "Only direct MP4 and WebM links are supported")
+
+    return extension
+
 @app.get("/")
 def home():
     return {"message": "VideoDrop backend is running"}
@@ -25,22 +55,17 @@ def health():
 
 @app.post("/prepare")
 def prepare_video(data: VideoRequest):
-    url = data.url.strip()
-    parsed = urlparse(url)
-
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise HTTPException(400, "Invalid URL")
-
-    if parsed.hostname in ("localhost", "127.0.0.1"):
-        raise HTTPException(400, "Local URLs are not allowed")
-
-    extension = parsed.path.lower().split(".")[-1]
-
-    if extension not in ("mp4", "webm"):
-        raise HTTPException(400, "Only direct MP4 and WebM links are supported")
-
+    extension = validate_media_url(data.url)
     return {
         "status": "checked",
         "format": extension,
-        "message": "Link format accepted. Download processing is not enabled yet."
+        "message": "Direct media link accepted"
     }
+
+@app.post("/download")
+def download_video(data: VideoRequest):
+    validate_media_url(data.url)
+    return RedirectResponse(
+        url=data.url.strip(),
+        status_code=302
+    )
